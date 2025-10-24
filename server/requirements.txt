@@ -7,5 +7,10 @@ requests
 google-generativeai
 lxml_html_clean
 openai
+anthropic
 scikit-learn
 supabase
+flask
+flask-cors
+feedparser
+APScheduler
