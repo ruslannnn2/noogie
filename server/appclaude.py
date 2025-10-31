@@ -36,15 +36,6 @@ def main():
 
 
 
-    # --- Gemini key check ---
-    try:
-        genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-    except AttributeError:
-        print("="*50)
-        print(">>> ERROR: Please set your GEMINI_API_KEY environment variable. <<<")
-        print("="*50)
-        exit()
-
     # --- Newspaper Config ---
     config = Config()
     config.memoize_articles = False
@@ -115,11 +106,11 @@ def main():
             return "Not enough content to summarize."
 
         if prompt_type == "article":
-            system_prompt = "You are a helpful assistant that summarizes news articles concisely."
-            user_prompt = f"Summarize the following news article in 2-3 concise sentences:\n\n{text}"
+            system_prompt = "You are a helpful assistant that summarizes news articles concisely. You respond with ONLY the summary, no preambles or additional text."
+            user_prompt = f"Summarize the following news article in 2-3 concise sentences. Return ONLY the summary, nothing else:\n\n{text}"
         else:  # cluster
-            system_prompt = "You are a helpful assistant that synthesizes multiple summaries into a coherent overview."
-            user_prompt = f"Synthesize the following summaries into 3-4 concise sentences:\n\n{text}"
+            system_prompt = "You are a helpful assistant that synthesizes multiple summaries into a coherent overview. You respond with ONLY the synthesis, no preambles or additional text."
+            user_prompt = f"Synthesize the following summaries into 3-4 concise sentences. Return ONLY the synthesis, nothing else:\n\n{text}"
 
         try:
             resp = anthropic_client.messages.create(
@@ -200,6 +191,7 @@ def main():
             "article_summary": info["summary"],
             "source": ident[0],
             "text": info["text"],
+            "url": ident[2],
         })
 
     # Embeddings + Clustering 
@@ -235,19 +227,21 @@ def main():
         cluster_text = " ".join(a["article_summary"] for a in arts)
         summary = generate_summary(cluster_text, prompt_type="cluster")
 
-        # Generate a concise cluster name using OpenAI
-        name_prompt = f"Create a short, descriptive title (3-5 words) for the following news summary:\n\n{summary}"
+        # Generate a concise cluster name using Claude
+        name_prompt = f"Create a short, descriptive title (3-5 words) for the following news summary. Return ONLY the title, nothing else:\n\n{summary}"
         try:
-            resp = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": "You are a helpful assistant that creates concise titles."},
-                    {"role": "user", "content": name_prompt},
-                ],
+            resp = anthropic_client.messages.create(
+                model="claude-3-5-haiku-20241022",
+                max_tokens=20,
                 temperature=0.3,
-                max_tokens=20
+                system="You are a helpful assistant that creates concise titles. You respond with ONLY the title, no explanations or additional text.",
+                messages=[
+                    {"role": "user", "content": name_prompt}
+                ]
             )
-            cluster_name = resp.choices[0].message.content.strip()
+            cluster_name = resp.content[0].text.strip()
+            # Remove quotes if present
+            cluster_name = cluster_name.strip('"\'')
         except Exception as e:
             cluster_name = summary.split()[:5]  # fallback: first 5 words
             cluster_name = " ".join(cluster_name)
